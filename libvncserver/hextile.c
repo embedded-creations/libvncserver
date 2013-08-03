@@ -6,7 +6,7 @@
 
 /*
  *  OSXvnc Copyright (C) 2001 Dan McGuirk <mcguirk@incompleteness.net>.
- *  Original Xvnc code Copyright (C) 1999 AT&T Laboratories Cambridge.  
+ *  Original Xvnc code Copyright (C) 1999 AT&T Laboratories Cambridge.
  *  All Rights Reserved.
  *
  *  This is free software; you can redistribute it and/or modify
@@ -44,7 +44,7 @@ rfbSendRectEncodingHextile(rfbClientPtr cl,
                            int h)
 {
     rfbFramebufferUpdateRectHeader rect;
-    
+
     if (cl->ublen + sz_rfbFramebufferUpdateRectHeader > UPDATE_BUF_SIZE) {
         if (!rfbSendUpdateBuf(cl))
             return FALSE;
@@ -137,7 +137,6 @@ sendHextiles##bpp(rfbClientPtr cl, int rx, int ry, int rw, int rh) {            
             startUblen = cl->ublen;                                             \
             cl->updateBuf[startUblen] = 0;                                      \
             cl->ublen++;                                                        \
-            rfbStatRecordEncodingSentAdd(cl, rfbEncodingHextile, 1);            \
                                                                                 \
             testColours##bpp(clientPixelData, w * h,                            \
                              &mono, &solid, &newBg, &newFg);                    \
@@ -150,6 +149,7 @@ sendHextiles##bpp(rfbClientPtr cl, int rx, int ry, int rw, int rh) {            
             }                                                                   \
                                                                                 \
             if (solid) {                                                        \
+                rfbStatRecordEncodingSentAdd(cl, rfbEncodingHextile, cl->ublen - startUblen);   \
                 continue;                                                       \
             }                                                                   \
                                                                                 \
@@ -182,9 +182,9 @@ sendHextiles##bpp(rfbClientPtr cl, int rx, int ry, int rw, int rh) {            
                        w * h * (bpp/8));                                        \
                                                                                 \
                 cl->ublen += w * h * (bpp/8);                                   \
-                rfbStatRecordEncodingSentAdd(cl, rfbEncodingHextile,            \
-                             w * h * (bpp/8));                                  \
             }                                                                   \
+                                                                                \
+            rfbStatRecordEncodingSentAdd(cl, rfbEncodingHextile, cl->ublen - startUblen);   \
         }                                                                       \
     }                                                                           \
                                                                                 \
@@ -211,7 +211,6 @@ subrectEncode##bpp(rfbClientPtr cl, uint##bpp##_t *data, int w, int h,          
                                                                                 \
     nSubrectsUblen = cl->ublen;                                                 \
     cl->ublen++;                                                                \
-    rfbStatRecordEncodingSentAdd(cl, rfbEncodingHextile, 1);                    \
                                                                                 \
     for (y=0; y<h; y++) {                                                       \
         line = data+(y*w);                                                      \
@@ -270,7 +269,6 @@ subrectEncode##bpp(rfbClientPtr cl, uint##bpp##_t *data, int w, int h,          
                                                                                 \
                 cl->updateBuf[cl->ublen++] = rfbHextilePackXY(thex,they);       \
                 cl->updateBuf[cl->ublen++] = rfbHextilePackWH(thew,theh);       \
-                rfbStatRecordEncodingSentAdd(cl, rfbEncodingHextile, 1);        \
                                                                                 \
                 /*                                                              \
                  * Now mark the subrect as done.                                \
