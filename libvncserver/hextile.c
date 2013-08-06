@@ -60,9 +60,16 @@ rfbSendRectEncodingHextile(rfbClientPtr cl,
            sz_rfbFramebufferUpdateRectHeader);
     cl->ublen += sz_rfbFramebufferUpdateRectHeader;
 
-    rfbStatRecordEncodingSent(cl, rfbEncodingHextile,
-          sz_rfbFramebufferUpdateRectHeader,
-          sz_rfbFramebufferUpdateRectHeader + w * (cl->format.bitsPerPixel / 8) * h);
+    if(cl->format.depth == 1) {
+        rfbStatRecordEncodingSent(cl, rfbEncodingHextile,
+              sz_rfbFramebufferUpdateRectHeader,
+              sz_rfbFramebufferUpdateRectHeader + w * h / 8);
+    } else {
+        rfbStatRecordEncodingSent(cl, rfbEncodingHextile,
+              sz_rfbFramebufferUpdateRectHeader,
+              sz_rfbFramebufferUpdateRectHeader + w * (cl->format.bitsPerPixel / 8) * h);
+    }
+    //rfbStatRecordEncodingRcvd(cl, rfbEncodingHextile, 0, sz_rfbFramebufferUpdateRectHeader);
 
     switch (cl->format.bitsPerPixel) {
     case 8:
@@ -150,6 +157,7 @@ sendHextiles##bpp(rfbClientPtr cl, int rx, int ry, int rw, int rh) {            
                                                                                 \
             if (solid) {                                                        \
                 rfbStatRecordEncodingSentAdd(cl, rfbEncodingHextile, cl->ublen - startUblen);   \
+                rfbStatRecordEncodingRcvd(cl, rfbEncodingRRE, 1, cl->ublen - startUblen);   \
                 continue;                                                       \
             }                                                                   \
                                                                                 \
@@ -178,12 +186,42 @@ sendHextiles##bpp(rfbClientPtr cl, int rx, int ry, int rw, int rh) {            
                                    (char *)clientPixelData,                     \
                                    cl->scaledScreen->paddedWidthInBytes, w, h); \
                                                                                 \
-                memcpy(&cl->updateBuf[cl->ublen], (char *)clientPixelData,      \
-                       w * h * (bpp/8));                                        \
+                /* Special case for depth == 1: pack pixels into bytes */       \
+                if(cl->format.depth == 1) {                                     \
+                    uint8_t temp = 0;                                           \
+                    int i = 0;                                                  \
                                                                                 \
-                cl->ublen += w * h * (bpp/8);                                   \
+                    while(i < w * h) {                                          \
+                        /* set a bit for every non-zero pixel */                \
+                        if(*(char *)(clientPixelData + i))                      \
+                            temp |= 1 << (i%8);                                 \
+                                                                                \
+                        /* every 8 bits, store the byte into the pixel array, and start fresh with a new byte */  \
+                        if(i%8 == 7) {                                          \
+                            cl->updateBuf[cl->ublen + i/8] = temp;              \
+                            temp = 0;                                           \
+                        }                                                       \
+                                                                                \
+                        i++;                                                    \
+                    }                                                           \
+                                                                                \
+                    /* store last (partially filled) byte, if there is one at the end */  \
+                    if(i%8) {                                                   \
+                        i += 8 - i%8;                                           \
+                        cl->updateBuf[cl->ublen + i/8] = temp;                  \
+                    }                                                           \
+                    cl->ublen += i/8;                                           \
+                } else {                                                        \
+                    memcpy(&cl->updateBuf[cl->ublen], (char *)clientPixelData,  \
+                           w * h * (bpp/8));                                    \
+                                                                                \
+                    cl->ublen += w * h * (bpp/8);                               \
+                }                                                               \
+                                                                                \
+                rfbStatRecordEncodingRcvd(cl, rfbEncodingRaw, 1, cl->ublen - startUblen);   \
+            } else {                                                                \
+                rfbStatRecordEncodingRcvd(cl, rfbEncodingHextile, 1, cl->ublen - startUblen);   \
             }                                                                   \
-                                                                                \
             rfbStatRecordEncodingSentAdd(cl, rfbEncodingHextile, cl->ublen - startUblen);   \
         }                                                                       \
     }                                                                           \
@@ -263,6 +301,9 @@ subrectEncode##bpp(rfbClientPtr cl, uint##bpp##_t *data, int w, int h,          
                 if (newLen > (w * h * (bpp/8)))                                 \
                     return FALSE;                                               \
                                                                                 \
+                if (cl->format.depth == 1 && newLen > (w * h)/8)                  \
+                    return FALSE;                                               \
+                                                                                \
                 numsubs += 1;                                                   \
                                                                                 \
                 if (!mono) PUT_PIXEL##bpp(cl2);                                 \
@@ -283,7 +324,7 @@ subrectEncode##bpp(rfbClientPtr cl, uint##bpp##_t *data, int w, int h,          
     }                                                                           \
                                                                                 \
     cl->updateBuf[nSubrectsUblen] = numsubs;                                    \
-                                                                                \
+                                                                            \
     return TRUE;                                                                \
 }                                                                               \
                                                                                 \

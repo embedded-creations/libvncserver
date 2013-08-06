@@ -52,10 +52,38 @@ HandleHextileBPP (rfbClient* client, int rx, int ry, int rw, int rh)
 	return FALSE;
 
       if (subencoding & rfbHextileRaw) {
-	if (!ReadFromRFBServer(client, client->buffer, w * h * (BPP / 8)))
-	  return FALSE;
+        /* Special case for depth == 1: unpack pixels from bytes before copying */
+        if(client->format.depth == 1) {
+            int bytesToRead = w*h/8;
+            uint8_t tempbuffer[16 * 16];
+            uint8_t * bufptr;
+            int i=0;
 
-	CopyRectangle(client, (uint8_t *)client->buffer, x, y, w, h);
+            if((w*h) % 8)
+                bytesToRead++;
+
+            if (!ReadFromRFBServer(client, client->buffer, bytesToRead))
+              return FALSE;
+
+            while(i < w * h) {
+                /* set a bit for every non-zero pixel */
+                bufptr = (uint8_t *)client->buffer;
+                bufptr += i/8;
+                if(*bufptr & (1 << i%8))
+                    tempbuffer[i] = 255;
+                else
+                    tempbuffer[i] = 0;
+
+                i++;
+            }
+
+            CopyRectangle(client, tempbuffer, x, y, w, h);
+        } else {
+            if (!ReadFromRFBServer(client, client->buffer, w * h * (BPP / 8)))
+              return FALSE;
+
+            CopyRectangle(client, (uint8_t *)client->buffer, x, y, w, h);
+        }
 
 	continue;
       }
