@@ -3244,7 +3244,12 @@ rfbBool
 rfbSendUpdateBuf(rfbClientPtr cl)
 {
     if(cl->sock == -99) {
-      // hack to allow for encoding without an active client connection
+      // hack to write updateBuf to file instead of sending to an active client connection
+      if(cl->clientData) {
+          int i;
+        for(i=0; i<cl->ublen; i++)
+          fputc(*(cl->updateBuf+i),(FILE*)cl->clientData);
+      }
       cl->ublen = 0;
       return TRUE;
     }
